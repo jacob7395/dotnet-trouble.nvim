@@ -6,6 +6,7 @@ local M = {}
 ---@type DotnetTroubleConfig
 local dotnet_trouble_config = {
     log_level = vim.log.levels.DEBUG,
+    build_output_path = vim.fs.joinpath(vim.fn.stdpath("run"), "dotnet-trouble")
 }
 
 function M.get()
