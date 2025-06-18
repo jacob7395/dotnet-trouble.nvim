@@ -46,6 +46,12 @@ end
 local C = {}
 C.__index = C
 
+---@param lines table<string, dotnet-trouble.Result>
+function C:Set(lines)
+  self.data = lines
+  self.size = #self.data + 1
+end
+
 function C:Add(log_line)
   self.log:Debug("---------------------------------------")
   self.log:Debug("Parceing line")
@@ -89,6 +95,7 @@ function C:GetTroubleItems()
 
     item_hash[hash] = true
 
+---@diagnostic disable-next-line: undefined-field
     value.item = value.item or value.build_item()
 
     unique_items[#unique_items + 1] = value
@@ -102,7 +109,6 @@ function C:GetTroubleItems()
   return items
 end
 
----@private
 ---@return dotnet-trouble.Result
 function C:Parse(log_line)
   self.log:Debug("Parsing the line")

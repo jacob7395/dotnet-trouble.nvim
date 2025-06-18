@@ -5,6 +5,7 @@ local log = require("dotnet-trouble.log")
 ---@field results dotnet-trouble.Result.Store
 ---@field private build_file string
 ---@field private _running boolean
+---@field has_executed boolean
 local Executor = {}
 Executor.__index = Executor
 
@@ -17,57 +18,27 @@ function Executor.new(build_file)
     results = require("dotnet-trouble.results").new(build_file),
     _running = false,
     build_file = build_file,
+    has_executed = false,
   }
 
-  ---@type dotnet-trouble.Executor
-  local instance = setmetatable(data, Executor)
-
-  -- instance:InitWorker()
-
-  return instance
+  return setmetatable(data, Executor)
 end
 
--- ---@private
--- function Executor:InitWorker()
---   log:Trace("Instantiating executor worker")
---
---   if self._worker then
---     log:Warning("Executor already has a worker")
---     return
---   end
---
---   local process = function(build_file)
---     -- local _log = require("dotnet-trouble.log")
---     -- _log:Debug("Running build for: " .. build_file)
---
---     local _dotnet = require("dotnet-trouble.dotnet_commands")
---
---     local build_cmd = _dotnet.Build(build_file)
---     local build_result = build_cmd:wait()
---
---     -- _log:Debug("Dotnet build finished with exit code - " .. build_result.code)
---
---     return build_result.stdout
---   end
---
---   local afterProcess = function(...)
---     log:Trace("Processing worker results")
---
---     local results = self:ProcessResult(...)
---
---     log:Trace("Finished processing worker results")
---
---     print("finished")
---     return results
---   end
---
---   self._worker = vim.uv.new_work(process, afterProcess)
---
---   log:Trace("Worker instantiating")
--- end
+function Executor:OnBuffWrite()
+  self:Run()
+end
+
+function Executor:OnBuffEnter()
+  if not Executor.has_executed then
+    self:Run()
+    log:Info("Executor for " .. self.build_file .. " started runniny")
+  end
+end
 
 function Executor:Run()
   log:Trace("Run request received for executor")
+
+  self.has_executed = true
 
   if self._running == true then
     log:Trace("Executor is already running")
@@ -78,14 +49,22 @@ function Executor:Run()
 
   log:Trace("Running executor")
 
-  dotnet.Build(self.build_file, function (out)
-        log:Debug("Dotnet build finished with exit code - " .. out.code)
+  dotnet.Build(self.build_file, function(out)
+    log:Debug("Dotnet build finished with exit code - " .. out.code)
 
-        -- if out.code ~= 0 then
-        --     return
-        -- end
+    -- if out.code ~= 0 then
+    --     return
+    -- end
 
-        self:ProcessResult(out.stdout)
+    self:ProcessResult(out.stdout)
+
+    local success, _ = pcall(require, "trouble")
+
+    if success then
+      vim.schedule(function()
+        vim.cmd("Trouble dotnet refresh")
+      end)
+    end
   end)
 end
 
@@ -96,10 +75,20 @@ function Executor:ProcessResult(stdout)
     log:Error("Did not get a result back from the dotnet build")
   end
 
+  local results = {}
+
   for line in stdout:gmatch("[^\r\n]+") do
-    self.results:Add(line)
+    log:Debug(stdout)
+
+    if not (line:match("error") or line:match("warning")) then
+      goto continue
+    end
+
+    results[#results + 1] = self.results:Parse(line)
+    ::continue::
   end
 
+  self.results:Set(results)
   self._running = false
 end
 

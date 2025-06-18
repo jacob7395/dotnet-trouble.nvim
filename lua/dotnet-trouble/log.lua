@@ -38,6 +38,11 @@ function M:Debug(message)
 end
 
 ---@params message string
+function M:Info(message)
+    M:__AddMessage(message, vim.log.levels.INFO)
+end
+
+---@params message string
 function M:Warning(message)
     M:__AddMessage(message, vim.log.levels.WARN)
 end

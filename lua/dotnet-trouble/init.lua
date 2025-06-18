@@ -5,21 +5,17 @@ local M = {}
 
 local log = require("dotnet-trouble.log")
 
-local function RunExecutor(buffer)
+local function GetExecutor(buffer)
   local build_file = require("dotnet-trouble.dotnet_commands").GetBuildFile(buffer)
 
   log:Trace("Identified build file starting executor")
 
   if not build_file then
     log:Debug("Unable to process buffer " .. buffer)
-    return
+    return nil
   end
 
-  local executor = executor_factory:Get(build_file)
-
-  log:Trace("Retrieved executor for build file")
-
-  executor:Run()
+  return executor_factory:Get(build_file)
 end
 
 ---@param config? DotnetTroubleConfig
@@ -33,26 +29,45 @@ function M.setup(config)
 
   require("dotnet-trouble.config").setup(config)
 
-  -- vim.api.nvim_create_autocmd("FileType", {
-  --     group = group,
-  --     pattern = "cs",
-  --     callback = function()
-  --         -- require("roslyn.commands").create_roslyn_commands()
-  --     end,
-  -- })
-
   vim.api.nvim_create_autocmd({ "BufWritePost" }, {
     group = group,
     pattern = { "*.cs" },
     callback = function(args)
-      local ok, _ = pcall(RunExecutor, args.buf)
+      local ok, executor = pcall(GetExecutor, args.buf)
 
-      if ok == false then
+      if ok == false or executor == nil then
         vim.notify_once("Unexpected error occurred when running dotnet-trouble for buffer: " .. args.buf)
         return
       end
 
-      vim.notify_once("dotnet-trouble started")
+      ok, _ = pcall(executor.OnBuffWrite, executor)
+
+      if ok == false then
+        --TODO: don't notify write improve log/healthchecck/status
+        vim.notify_once("Unexpected error occurred when running executor: " .. args.buf)
+        return
+      end
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "BufWinEnter" }, {
+    group = group,
+    pattern = { "*.cs" },
+    callback = function(args)
+      local ok, executor = pcall(GetExecutor, args.buf)
+
+      if ok == false or executor == nil then
+        vim.notify_once("Unexpected error occurred when running dotnet-trouble for buffer: " .. args.buf)
+        return
+      end
+
+      pcall(executor.OnBuffEnter, executor)
+
+      if ok == false then
+        --TODO: don't notify write improve log/healthchecck/status
+        vim.notify_once("Unexpected error occurred when running executor: " .. args.buf)
+        return
+      end
     end,
   })
 
